@@ -1,0 +1,5 @@
+
+{
+  "name": "DriveEasy - Full-Stack Car Rental System",
+  "description": "A comprehensive car rental platform featuring a user panel for browsing and booking, a powerful admin dashboard for fleet and booking management, JWT authentication, and a production-ready MVC architecture simulation."
+}

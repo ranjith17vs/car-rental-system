@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriveEasy | Standalone Preview</title>
+
+    <!-- Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/react-router-dom@6/dist/umd/react-router-dom.production.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, createContext, useContext, useRef } = React;
+        const { HashRouter, Routes, Route, Navigate, Link, useNavigate, useParams } = ReactRouterDOM;
+
+        // --- Types Simulation ---
+        const UserRole = {
+            USER: 'user',
+            ADMIN: 'admin'
+        };
+
+        const BookingStatus = {
+            PENDING: 'Pending',
+            APPROVED: 'Approved',
+            REJECTED: 'Rejected',
+            COMPLETED: 'Completed'
+        };
+
+        // --- MockDB Service ---
+        const INITIAL_CARS = [
+            {
+                id: 1,
+                name: "Scorpio-N",
+                brand: "Mahindra",
+                price_per_day: 4500,
+                fuel_type: "Diesel",
+                image: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&q=80&w=800",
+                availability: true
+            },
+            {
+                id: 2,
+                name: "Thar Rooftop",
+                brand: "Mahindra",
+                price_per_day: 3500,
+                fuel_type: "Diesel",
+                image: "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800",
+                availability: true
+            },
+            {
+                id: 3,
+                name: "Fortuner Legender",
+                brand: "Toyota",
+                price_per_day: 8500,
+                fuel_type: "Diesel",
+                image: "https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&q=80&w=800",
+                availability: true
+            }
+        ];
+
+        const INITIAL_USERS = [
+            {
+                id: 1,
+                name: "Admin User",
+                email: "admin@driveeasy.com",
+                phone: "9876543210",
+                role: UserRole.ADMIN,
+                password: "admin123"
+            },
+            {
+                id: 2,
+                name: "Test User",
+                email: "user@driveeasy.com",
+                phone: "9876543211",
+                role: UserRole.USER,
+                password: "user123"
+            }
+        ];
+
+        class MockDBClass {
+            constructor() {
+                this.cars = [];
+                this.users = [];
+                this.bookings = [];
+                this.nextBookingId = 1;
+                this.nextCarId = 4;
+                this.nextUserId = 3;
+                this.load();
+                if (this.cars.length === 0) {
+                    this.cars = [...INITIAL_CARS];
+                    this.users = [...INITIAL_USERS];
+                    this.save();
+                }
+            }
+
+            load() {
+                const carsJson = localStorage.getItem('drive_cars');
+                const usersJson = localStorage.getItem('drive_users');
+                const bookingsJson = localStorage.getItem('drive_bookings');
+
+                if (carsJson) {
+                    this.cars = JSON.parse(carsJson);
+                    if (this.cars.length > 0) this.nextCarId = Math.max(...this.cars.map(c => c.id)) + 1;
+                }
+                if (usersJson) {
+                    this.users = JSON.parse(usersJson);
+                    if (this.users.length > 0) this.nextUserId = Math.max(...this.users.map(u => u.id)) + 1;
+                }
+                if (bookingsJson) {
+                    this.bookings = JSON.parse(bookingsJson);
+                    if (this.bookings.length > 0) this.nextBookingId = Math.max(...this.bookings.map(b => b.id)) + 1;
+                }
+            }
+
+            save() {
+                localStorage.setItem('drive_cars', JSON.stringify(this.cars));
+                localStorage.setItem('drive_users', JSON.stringify(this.users));
+                localStorage.setItem('drive_bookings', JSON.stringify(this.bookings));
+            }
+
+            getCars() { return this.cars; }
+            getUsers() { return this.users; }
+            getBookings() {
+                return this.bookings.map(b => ({
+                    ...b,
+                    car: this.cars.find(c => c.id === b.car_id),
+                    user: this.users.find(u => u.id === b.user_id)
+                }));
+            }
+
+            registerUser(userData) {
+                const newUser = {
+                    id: this.nextUserId++,
+                    name: userData.name || '',
+                    email: userData.email || '',
+                    phone: userData.phone || '',
+                    role: userData.role || UserRole.USER,
+                    password: userData.password
+                };
+                this.users.push(newUser);
+                this.save();
+                return newUser;
+            }
+
+            createBooking(bookingData) {
+                const newBooking = {
+                    id: this.nextBookingId++,
+                    user_id: bookingData.user_id,
+                    car_id: bookingData.car_id,
+                    pickup_date: bookingData.pickup_date,
+                    return_date: bookingData.return_date,
+                    total_price: bookingData.total_price,
+                    status: bookingData.status || BookingStatus.PENDING,
+                    has_driver: bookingData.has_driver || false,
+                    driver_id_proof: bookingData.driver_id_proof
+                };
+                this.bookings.push(newBooking);
+                this.save();
+                return newBooking;
+            }
+
+            updateBookingStatus(id, status, driverDetails) {
+                const index = this.bookings.findIndex(b => b.id === id);
+                if (index !== -1) {
+                    this.bookings[index].status = status;
+                    if (driverDetails) {
+                        this.bookings[index].driver_name = driverDetails.name;
+                        this.bookings[index].driver_phone = driverDetails.phone;
+                        this.bookings[index].driver_id_proof = driverDetails.id_proof;
+                    }
+                    this.save();
+                }
+            }
+
+            saveCar(carData) {
+                if (carData.id) {
+                    const index = this.cars.findIndex(c => c.id === carData.id);
+                    if (index !== -1) this.cars[index] = carData;
+                    else this.cars.push(carData);
+                } else {
+                    const newCar = { ...carData, id: this.nextCarId++ };
+                    this.cars.push(newCar);
+                }
+                this.save();
+            }
+
+            deleteCar(id) {
+                this.cars = this.cars.filter(c => c.id !== id);
+                this.save();
+            }
+        }
+
+        const MockDB = new MockDBClass();
+
+        // --- App Component Definitions ---
+
+        const DRIVER_DAILY_FEE = 500;
+
+        const fileToBase64 = (file) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = (error) => reject(error);
+                reader.readAsDataURL(file);
+            });
+        };
+
+        const AuthContext = createContext(null);
+        const useAuth = () => useContext(AuthContext);
+
+        const Navbar = () => {
+            const { auth, logout } = useAuth();
+            const navigate = useNavigate();
+
+            return (
+                <nav className="bg-white border-b border-zinc-200 sticky top-0 z-50">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex justify-between h-16">
+                            <div className="flex items-center">
+                                <Link to="/" className="text-2xl font-bold text-blue-600 flex items-center gap-2">
+                                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                    DriveEasy
+                                </Link>
+                            </div>
+                            <div className="hidden sm:flex sm:items-center sm:space-x-8">
+                                <Link to="/" className="text-zinc-600 hover:text-blue-600 font-medium">Browse Cars</Link>
+                                {auth.isAuthenticated ? (
+                                    <>
+                                        {auth.user?.role === UserRole.ADMIN ? (
+                                            <Link to="/admin" className="text-zinc-600 hover:text-blue-600 font-medium">Dashboard</Link>
+                                        ) : (
+                                            <Link to="/my-bookings" className="text-zinc-600 hover:text-blue-600 font-medium">My Bookings</Link>
+                                        )}
+                                        <button onClick={() => { logout(); navigate('/login'); }} className="bg-zinc-100 text-zinc-700 px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition">Logout</button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Link to="/login" className="text-zinc-600 hover:text-blue-600 font-medium">Login</Link>
+                                        <Link to="/register" className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-blue-700 transition shadow-sm">Get Started</Link>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+            );
+        };
+
+        const Home = () => {
+            const [cars, setCars] = useState(MockDB.getCars());
+            const [filter, setFilter] = useState({ brand: '', fuel: '' });
+            const navigate = useNavigate();
+
+            const filteredCars = cars.filter(c =>
+                c.availability &&
+                (filter.brand === '' || c.brand.toLowerCase() === filter.brand.toLowerCase()) &&
+                (filter.fuel === '' || c.fuel_type.toLowerCase() === filter.fuel.toLowerCase())
+            );
+
+            const brands = Array.from(new Set(cars.map(c => c.brand)));
+            const fuels = Array.from(new Set(cars.map(c => c.fuel_type)));
+
+            return (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+                    <div className="mb-12 text-center">
+                        <h1 className="text-4xl font-extrabold text-zinc-900 mb-4">Rent Your Dream Car in India</h1>
+                        <p className="text-lg text-zinc-600 max-w-2xl mx-auto">Verified fleet, Indian brands, and professional drivers at your service.</p>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-zinc-200 mb-10 flex flex-wrap gap-4 items-center">
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">Brand</label>
+                            <select className="w-full border-zinc-200 rounded-lg focus:ring-blue-500" value={filter.brand} onChange={(e) => setFilter({ ...filter, brand: e.target.value })}>
+                                <option value="">All Brands</option>
+                                {brands.map(b => <option key={b} value={b}>{b}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">Fuel Type</label>
+                            <select className="w-full border-zinc-200 rounded-lg focus:ring-blue-500" value={filter.fuel} onChange={(e) => setFilter({ ...filter, fuel: e.target.value })}>
+                                <option value="">All Fuels</option>
+                                {fuels.map(f => <option key={f} value={f}>{f}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {filteredCars.map(car => (
+                            <div key={car.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-zinc-200 hover:shadow-xl transition-shadow group">
+                                <div className="relative h-56">
+                                    <img src={car.image} alt={car.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-blue-600 uppercase tracking-wider">{car.brand}</div>
+                                </div>
+                                <div className="p-6">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="text-xl font-bold text-zinc-900">{car.name}</h3>
+                                            <p className="text-zinc-500 text-sm">{car.fuel_type}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-2xl font-black text-blue-600">₹{car.price_per_day}</span>
+                                            <span className="text-zinc-400 text-sm">/day</span>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => navigate(`/car/${car.id}`)} className="w-full py-3 bg-zinc-900 text-white rounded-xl font-semibold hover:bg-blue-600 transition">View Details</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const CarDetails = () => {
+            const { id } = useParams();
+            const navigate = useNavigate();
+            const { auth } = useAuth();
+            const car = MockDB.getCars().find(c => c.id === Number(id));
+            const [dates, setDates] = useState({ pickup: '', return: '' });
+            const [includeDriver, setIncludeDriver] = useState(false);
+            const [driverIdProof, setDriverIdProof] = useState(null);
+            const [totalPrice, setTotalPrice] = useState(0);
+
+            useEffect(() => {
+                if (dates.pickup && dates.return && car) {
+                    const start = new Date(dates.pickup);
+                    const end = new Date(dates.return);
+                    const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24));
+                    if (diff > 0) {
+                        let daily = car.price_per_day;
+                        if (includeDriver) daily += DRIVER_DAILY_FEE;
+                        setTotalPrice(diff * daily);
+                    } else {
+                        setTotalPrice(0);
+                    }
+                }
+            }, [dates, car, includeDriver]);
+
+            if (!car) return <div className="p-10 text-center font-bold text-xl">Car not found or unavailable.</div>;
+
+            const handleDriverIdUpload = async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                    const b64 = await fileToBase64(file);
+                    setDriverIdProof(b64);
+                }
+            };
+
+            const handleBooking = () => {
+                if (!auth.isAuthenticated) { navigate('/login'); return; }
+                if (totalPrice <= 0) { alert("Please select valid dates"); return; }
+                MockDB.createBooking({
+                    user_id: auth.user.id,
+                    car_id: car.id,
+                    pickup_date: dates.pickup,
+                    return_date: dates.return,
+                    total_price: totalPrice,
+                    status: BookingStatus.PENDING,
+                    has_driver: includeDriver,
+                    driver_id_proof: driverIdProof || undefined
+                });
+                alert("Booking requested successfully!");
+                navigate('/my-bookings');
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto px-4 py-12">
+                    <div className="grid lg:grid-cols-2 gap-12">
+                        <div className="rounded-3xl overflow-hidden shadow-2xl h-[500px]"><img src={car.image} className="w-full h-full object-cover" /></div>
+                        <div className="space-y-8">
+                            <div>
+                                <span className="text-blue-600 font-bold tracking-widest uppercase text-sm">{car.brand}</span>
+                                <h1 className="text-5xl font-black text-zinc-900 mt-2">{car.name}</h1>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-zinc-100 p-4 rounded-2xl">
+                                    <p className="text-xs text-zinc-500 font-bold uppercase">Base Rate</p>
+                                    <p className="text-2xl font-black text-zinc-900">₹{car.price_per_day}/day</p>
+                                </div>
+                                <div className="bg-zinc-100 p-4 rounded-2xl">
+                                    <p className="text-xs text-zinc-500 font-bold uppercase">Fuel Type</p>
+                                    <p className="text-2xl font-black text-zinc-900">{car.fuel_type}</p>
+                                </div>
+                            </div>
+                            <div className="bg-white p-8 rounded-3xl border border-zinc-200 shadow-sm space-y-6">
+                                <h3 className="text-xl font-bold">Secure Your Booking</h3>
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-zinc-700 mb-1">Pickup Date</label>
+                                        <input type="date" className="w-full p-3 border-zinc-200 rounded-xl" value={dates.pickup} onChange={(e) => setDates({ ...dates, pickup: e.target.value })} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-zinc-700 mb-1">Return Date</label>
+                                        <input type="date" className="w-full p-3 border-zinc-200 rounded-xl" value={dates.return} onChange={(e) => setDates({ ...dates, return: e.target.value })} />
+                                    </div>
+                                </div>
+                                <label className="flex items-center gap-3 p-4 bg-zinc-50 rounded-2xl border border-zinc-200 cursor-pointer hover:bg-zinc-100 transition">
+                                    <input type="checkbox" className="w-5 h-5 rounded text-blue-600" checked={includeDriver} onChange={(e) => setIncludeDriver(e.target.checked)} />
+                                    <div>
+                                        <p className="font-bold text-zinc-900 text-sm">Hire Professional Driver</p>
+                                        <p className="text-xs text-zinc-500">+₹{DRIVER_DAILY_FEE} extra per day</p>
+                                    </div>
+                                </label>
+                                {totalPrice > 0 && (
+                                    <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex justify-between items-center">
+                                        <span className="font-bold text-blue-800">Final Price</span>
+                                        <span className="text-3xl font-black text-blue-600">₹{totalPrice}</span>
+                                    </div>
+                                )}
+                                <button onClick={handleBooking} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-lg hover:bg-blue-700 shadow-lg shadow-blue-200 transition">Proceed to Booking</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Login = () => {
+            const [form, setForm] = useState({ email: '', password: '' });
+            const { login } = useAuth();
+            const navigate = useNavigate();
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (login(form.email, form.password)) navigate('/');
+                else alert('Invalid credentials');
+            };
+
+            return (
+                <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-3xl shadow-xl border border-zinc-100">
+                    <h2 className="text-3xl font-black text-zinc-900 mb-8">Welcome Back</h2>
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-bold text-zinc-700 mb-2">Email Address</label>
+                            <input type="email" required className="w-full p-4 border-zinc-200 rounded-2xl" onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-zinc-700 mb-2">Password</label>
+                            <input type="password" required className="w-full p-4 border-zinc-200 rounded-2xl" onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                        </div>
+                        <button type="submit" className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg hover:bg-zinc-800 transition">Sign In</button>
+                    </form>
+                    <p className="mt-4 text-center text-sm text-zinc-500">Demo: admin@driveeasy.com / admin123</p>
+                </div>
+            );
+        };
+
+        const Register = () => {
+            const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
+            const { register } = useAuth();
+            const navigate = useNavigate();
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                register(form.name, form.email, form.phone, form.password);
+                navigate('/');
+            };
+
+            return (
+                <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-3xl shadow-xl border border-zinc-100">
+                    <h2 className="text-3xl font-black text-zinc-900 mb-8">Join DriveEasy</h2>
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <input placeholder="Full Name" type="text" required className="w-full p-4 border-zinc-200 rounded-2xl" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                        <input placeholder="Email" type="email" required className="w-full p-4 border-zinc-200 rounded-2xl" onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                        <input placeholder="Phone" type="text" required className="w-full p-4 border-zinc-200 rounded-2xl" onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                        <input placeholder="Password" type="password" required className="w-full p-4 border-zinc-200 rounded-2xl" onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                        <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold text-lg hover:bg-blue-700 transition">Register</button>
+                    </form>
+                </div>
+            );
+        };
+
+        const MyBookings = () => {
+            const { auth } = useAuth();
+            const bookings = MockDB.getBookings().filter(b => b.user_id === auth.user?.id);
+
+            const getStatusColor = (status) => {
+                switch (status) {
+                    case BookingStatus.PENDING: return 'bg-amber-100 text-amber-700';
+                    case BookingStatus.APPROVED: return 'bg-emerald-100 text-emerald-700';
+                    case BookingStatus.REJECTED: return 'bg-rose-100 text-rose-700';
+                    case BookingStatus.COMPLETED: return 'bg-blue-100 text-blue-700';
+                    default: return 'bg-zinc-100 text-zinc-700';
+                }
+            };
+
+            return (
+                <div className="max-w-5xl mx-auto px-4 py-12">
+                    <h2 className="text-3xl font-black text-zinc-900 mb-8">My Road Adventures</h2>
+                    <div className="space-y-6">
+                        {bookings.length === 0 ? (
+                            <div className="text-center p-20 bg-white rounded-3xl border border-zinc-200">
+                                <p className="text-zinc-500 text-lg mb-4">No bookings yet.</p>
+                                <Link to="/" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold inline-block">Explore Fleet</Link>
+                            </div>
+                        ) : (
+                            bookings.map(b => (
+                                <div key={b.id} className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 flex flex-wrap gap-8 items-center">
+                                    <img src={b.car?.image} className="w-32 h-24 object-cover rounded-xl shadow-inner" />
+                                    <div className="flex-1">
+                                        <h4 className="text-xl font-bold text-zinc-900">{b.car?.name} <span className="text-xs font-normal text-zinc-400">({b.car?.brand})</span></h4>
+                                        <p className="text-zinc-500 text-sm mt-1">{b.pickup_date} to {b.return_date}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-3xl font-black text-zinc-900">₹{b.total_price}</p>
+                                        <span className={`inline-block px-4 py-1.5 rounded-full text-xs font-black uppercase mt-2 ${getStatusColor(b.status)}`}>{b.status}</span>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminDashboard = () => {
+            const bookings = MockDB.getBookings();
+            const cars = MockDB.getCars();
+
+            const handleStatus = (id, status) => {
+                MockDB.updateBookingStatus(id, status);
+                window.location.reload();
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto px-4 py-12">
+                    <h1 className="text-4xl font-black text-zinc-900 tracking-tight mb-12">Admin Console</h1>
+                    <div className="bg-white rounded-3xl border border-zinc-200 overflow-hidden shadow-sm">
+                        <table className="w-full text-left">
+                            <thead className="bg-zinc-50 border-b border-zinc-200">
+                                <tr>
+                                    <th className="px-6 py-4 text-[10px] font-black text-zinc-500 uppercase">Customer</th>
+                                    <th className="px-6 py-4 text-[10px] font-black text-zinc-500 uppercase">Vehicle</th>
+                                    <th className="px-6 py-4 text-[10px] font-black text-zinc-500 uppercase">Pricing</th>
+                                    <th className="px-6 py-4 text-[10px] font-black text-zinc-500 uppercase text-right">Operations</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-200">
+                                {bookings.map(b => (
+                                    <tr key={b.id} className="hover:bg-zinc-50/50 transition">
+                                        <td className="px-6 py-5">
+                                            <p className="font-bold text-zinc-900">{b.user?.name}</p>
+                                            <p className="text-xs text-zinc-400">{b.user?.email}</p>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <p className="font-bold text-zinc-800">{b.car?.name}</p>
+                                            <p className="text-[10px] font-bold text-zinc-400 uppercase">{b.pickup_date} to {b.return_date}</p>
+                                        </td>
+                                        <td className="px-6 py-5 font-black text-lg">₹{b.total_price}</td>
+                                        <td className="px-6 py-5 text-right space-x-3">
+                                            {b.status === BookingStatus.PENDING && (
+                                                <div className="flex justify-end gap-3">
+                                                    <button onClick={() => handleStatus(b.id, BookingStatus.APPROVED)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg shadow-emerald-100">APPROVE</button>
+                                                    <button onClick={() => handleStatus(b.id, BookingStatus.REJECTED)} className="bg-zinc-200 text-zinc-600 px-4 py-2 rounded-xl text-xs font-black hover:bg-rose-50 hover:text-rose-600">REJECT</button>
+                                                </div>
+                                            )}
+                                            {b.status === BookingStatus.APPROVED && <button onClick={() => handleStatus(b.id, BookingStatus.COMPLETED)} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg shadow-blue-100">MARK COMPLETED</button>}
+                                            {b.status === BookingStatus.COMPLETED && <span className="text-[10px] font-black text-zinc-300 uppercase italic">Archived</span>}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const ProtectedRoute = ({ children, role }) => {
+            const { auth } = useAuth();
+            if (!auth.isAuthenticated) return <Navigate to="/login" />;
+            if (role && auth.user?.role !== role) return <Navigate to="/" />;
+            return <>{children}</>;
+        };
+
+        const AuthProvider = ({ children }) => {
+            const [auth, setAuth] = useState(() => {
+                const saved = localStorage.getItem('drive_auth');
+                return saved ? JSON.parse(saved) : { user: null, token: null, isAuthenticated: false };
+            });
+
+            const login = (email, pass) => {
+                const users = MockDB.getUsers();
+                const user = users.find(u => u.email === email && u.password === pass);
+                if (user) {
+                    const newState = { user, token: 'mock-jwt-token', isAuthenticated: true };
+                    setAuth(newState);
+                    localStorage.setItem('drive_auth', JSON.stringify(newState));
+                    return true;
+                }
+                return false;
+            };
+
+            const register = (name, email, phone, pass) => {
+                const newUser = MockDB.registerUser({ name, email, phone, password: pass });
+                const newState = { user: newUser, token: 'mock-jwt-token', isAuthenticated: true };
+                setAuth(newState);
+                localStorage.setItem('drive_auth', JSON.stringify(newState));
+            };
+
+            const logout = () => {
+                setAuth({ user: null, token: null, isAuthenticated: false });
+                localStorage.removeItem('drive_auth');
+            };
+
+            return (
+                <AuthContext.Provider value={{ auth, login, register, logout }}>
+                    {children}
+                </AuthContext.Provider>
+            );
+        };
+
+        function App() {
+            return (
+                <HashRouter>
+                    <AuthProvider>
+                        <div className="min-h-screen bg-slate-50 flex flex-col">
+                            <Navbar />
+                            <main className="flex-grow">
+                                <Routes>
+                                    <Route path="/" element={<Home />} />
+                                    <Route path="/car/:id" element={<CarDetails />} />
+                                    <Route path="/login" element={<Login />} />
+                                    <Route path="/register" element={<Register />} />
+                                    <Route path="/my-bookings" element={<ProtectedRoute role={UserRole.USER}><MyBookings /></ProtectedRoute>} />
+                                    <Route path="/admin" element={<ProtectedRoute role={UserRole.ADMIN}><AdminDashboard /></ProtectedRoute>} />
+                                    <Route path="*" element={<Navigate to="/" />} />
+                                </Routes>
+                            </main>
+                            <footer className="bg-white border-t border-zinc-200 py-10 mt-12">
+                                <div className="max-w-7xl mx-auto px-4 text-center">
+                                    <p className="text-zinc-400 font-medium">© 2024 DriveEasy Car Rental India. Standalone Preview Mode.</p>
+                                </div>
+                            </footer>
+                        </div>
+                    </AuthProvider>
+                </HashRouter>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
