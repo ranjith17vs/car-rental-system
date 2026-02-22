@@ -11,7 +11,7 @@ export enum BookingStatus {
 }
 
 export interface User {
-  id: number;
+  id: string | number;
   name: string;
   email: string;
   phone: string;
@@ -20,7 +20,7 @@ export interface User {
 }
 
 export interface Car {
-  id: number;
+  id: string | number;
   name: string;
   brand: string;
   price_per_day: number;
@@ -32,9 +32,9 @@ export interface Car {
 }
 
 export interface Booking {
-  id: number;
-  user_id: number;
-  car_id: number;
+  id: string | number;
+  user_id: string | number;
+  car_id: string | number;
   pickup_date: string;
   return_date: string;
   total_price: number;
