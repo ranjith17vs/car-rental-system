@@ -3,7 +3,7 @@
     {
       "id": 1,
       "name": "Scorpio-N",
-      "brand": "Mahindra",
+      "seats": "Mahindra",
       "price_per_day": 4500,
       "fuel_type": "Diesel",
       "image": "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&q=80&w=800",
@@ -12,7 +12,7 @@
     {
       "id": 2,
       "name": "Thar Rooftop",
-      "brand": "Mahindra",
+      "seats": "Mahindra",
       "price_per_day": 3500,
       "fuel_type": "Diesel",
       "image": "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800",
@@ -21,7 +21,7 @@
     {
       "id": 3,
       "name": "Fortuner Legender",
-      "brand": "Toyota",
+      "seats": "Toyota",
       "price_per_day": 8500,
       "fuel_type": "Diesel",
       "image": "https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&q=80&w=800",
@@ -32,7 +32,7 @@
     {
       "id": 1,
       "name": "Admin User",
-      "email": "admin@driveeasy.com",
+      "email": "driveeasyrental17@gmail.com",
       "phone": "9876543210",
       "role": "admin",
       "password": "admin123"

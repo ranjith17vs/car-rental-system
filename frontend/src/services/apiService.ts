@@ -63,11 +63,11 @@ class ApiService {
         return res.json();
     }
 
-    async updateBookingStatus(id: string | number, status: BookingStatus, driverDetails?: { name: string, phone: string, id_proof?: string }) {
+    async updateBookingStatus(id: string | number, status: BookingStatus, additionalDetails?: { name?: string, phone?: string, id_proof?: string, payment_method?: string }) {
         const res = await fetch(`${API_BASE_URL}/bookings/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status, ...driverDetails })
+            body: JSON.stringify({ status, ...additionalDetails })
         });
         return res.json();
     }

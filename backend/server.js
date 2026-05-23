@@ -105,7 +105,7 @@ app.post('/api/users/login-init', async (req, res) => {
         await db.collection('pending_logins').doc(email).set({
             email,
             otp,
-            expiresAt: new Date(Date.now() + 2 * 60 * 1000) // 2 mins
+            expiresAt: new Date(Date.now() + 1 * 60 * 1000) // 1 min
         });
 
         // Send Email
@@ -227,7 +227,7 @@ async function sendOTPEmail(to, otp, type = 'Login') {
                     <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #1f2937;">${otp}</span>
                 </div>
                 <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
-                    This code will expire in 10 minutes. If you did not request this, please ignore this email.
+                    This code will expire in 1 minute. If you did not request this, please ignore this email.
                 </p>
                 <hr>
                 <p style="text-align: center; font-size: 12px; color: #9ca3af;">
@@ -410,7 +410,7 @@ app.post('/api/users/register-init', async (req, res) => {
         await db.collection('pending_registrations').doc(email).set({
             name, phone, email, password: hashedPassword,
             otp,
-            expiresAt: new Date(Date.now() + 2 * 60 * 1000) // 2 mins
+            expiresAt: new Date(Date.now() + 1 * 60 * 1000) // 1 min
         });
 
         // Send Email

@@ -1,18 +1,44 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useNavigate, useParams } from 'react-router-dom';
 import { User, AuthState, UserRole, Car, BookingStatus, Booking } from './types';
+import { MapPicker } from './MapPicker';
 import apiService from './services/apiService';
 
 const DRIVER_DAILY_FEE = 500;
 
-// --- Helper for Base64 Upload ---
+// --- Helper for Base64 Upload & Document Viewing ---
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (error) => reject(error);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        const scale = Math.min(MAX_WIDTH / img.width, 1);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        } else {
+          resolve(e.target?.result as string);
+        }
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+};
+
+const openInNewTab = (base64: string) => {
+  const win = window.open();
+  if (win) {
+    win.document.write(`<iframe src="${base64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+  }
 };
 
 // --- Context ---
@@ -33,6 +59,201 @@ export const useAuth = () => {
   return context;
 };
 
+// --- Toast Context & Provider ---
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+export interface ToastItem {
+  id: string;
+  title: string;
+  message: string;
+  type: ToastType;
+  duration?: number;
+}
+
+interface ToastContextType {
+  toast: (title: string, message: string, type?: ToastType, duration?: number) => void;
+}
+
+const ToastContext = createContext<ToastContextType | undefined>(undefined);
+
+export const useToast = () => {
+  const context = useContext(ToastContext);
+  if (!context) throw new Error("useToast must be used within ToastProvider");
+  return context;
+};
+
+export const ToastProvider = ({ children }: { children?: React.ReactNode }) => {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const toast = (title: string, message: string, type: ToastType = 'info', duration = 5000) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, title, message, type, duration }]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  return (
+    <ToastContext.Provider value={{ toast }}>
+      {children}
+      {/* Toast Container */}
+      <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-4 max-w-md w-full pointer-events-none px-4 sm:px-0">
+        {toasts.map((t) => (
+          <ToastCard key={t.id} item={t} onClose={() => removeToast(t.id)} />
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
+};
+
+const ToastCard = ({ item, onClose }: { item: ToastItem, onClose: () => void }) => {
+  const [visible, setVisible] = useState(false);
+  const [progress, setProgress] = useState(100);
+
+  useEffect(() => {
+    const showTimeout = setTimeout(() => setVisible(true), 50);
+    let timer: any;
+    let progressInterval: any;
+    const duration = item.duration !== undefined ? item.duration : 5000;
+
+    if (duration > 0) {
+      timer = setTimeout(() => {
+        setVisible(false);
+        setTimeout(onClose, 300);
+      }, duration);
+
+      const step = 100 / (duration / 50);
+      progressInterval = setInterval(() => {
+        setProgress((p) => Math.max(0, p - step));
+      }, 50);
+    }
+
+    return () => {
+      clearTimeout(showTimeout);
+      if (timer) clearTimeout(timer);
+      if (progressInterval) clearInterval(progressInterval);
+    };
+  }, [item, onClose]);
+
+  const getTheme = () => {
+    switch (item.type) {
+      case 'success':
+        return {
+          border: 'border-emerald-500/20 shadow-emerald-500/10',
+          bg: 'bg-emerald-500/10',
+          iconColor: 'text-emerald-500',
+          progressBar: 'bg-emerald-500',
+          icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+            </svg>
+          ),
+        };
+      case 'error':
+        return {
+          border: 'border-rose-500/20 shadow-rose-500/10',
+          bg: 'bg-rose-500/10',
+          iconColor: 'text-rose-500',
+          progressBar: 'bg-rose-500',
+          icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          ),
+        };
+      case 'warning':
+        return {
+          border: 'border-amber-500/20 shadow-amber-500/10',
+          bg: 'bg-amber-500/10',
+          iconColor: 'text-amber-500',
+          progressBar: 'bg-amber-500',
+          icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          ),
+        };
+      default:
+        return {
+          border: 'border-blue-500/20 shadow-blue-500/10',
+          bg: 'bg-blue-500/10',
+          iconColor: 'text-blue-500',
+          progressBar: 'bg-blue-500',
+          icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          ),
+        };
+    }
+  };
+
+  const theme = getTheme();
+
+  const handleManualClose = () => {
+    setVisible(false);
+    setTimeout(onClose, 300);
+  };
+
+  const formatMessage = (msg: string) => {
+    if (msg.includes('\n')) {
+      return (
+        <div className="space-y-2 mt-2 text-[11px] text-slate-700 font-medium">
+          {msg.split('\n').map((line, idx) => {
+            const trimmed = line.trim();
+            if (!trimmed) return null;
+            if (trimmed.match(/^\d+\./)) {
+              const num = trimmed.split('.')[0];
+              const content = trimmed.substring(trimmed.indexOf('.') + 1).trim();
+              return (
+                <div key={idx} className="flex gap-2 items-start text-left">
+                  <span className={`font-black shrink-0 ${theme.iconColor}`}>{num}.</span>
+                  <span className="leading-relaxed">{content}</span>
+                </div>
+              );
+            }
+            return <p key={idx} className="font-bold text-slate-900 leading-relaxed text-left text-xs">{trimmed}</p>;
+          })}
+        </div>
+      );
+    }
+    return <p className="text-xs text-slate-600 font-medium leading-relaxed text-left mt-1">{msg}</p>;
+  };
+
+  return (
+    <div
+      className={`glass-morphism rounded-3xl pointer-events-auto border ${theme.border} p-5 shadow-2xl transition-all duration-300 ease-out relative overflow-hidden flex gap-4 ${
+        visible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-4 opacity-0 scale-95'
+      }`}
+      style={{
+        background: 'rgba(255, 255, 255, 0.9)',
+        backdropFilter: 'blur(20px)',
+      }}
+    >
+      <div className={`w-10 h-10 rounded-2xl ${theme.bg} flex items-center justify-center shrink-0 ${theme.iconColor}`}>
+        {theme.icon}
+      </div>
+      <div className="flex-1 pr-6">
+        <h4 className="font-black text-slate-900 text-xs tracking-tight text-left uppercase tracking-widest">{item.title}</h4>
+        {formatMessage(item.message)}
+      </div>
+      <button
+        onClick={handleManualClose}
+        className="absolute top-4 right-4 text-slate-400 hover:text-slate-900 transition-colors text-xs"
+      >
+        ✕
+      </button>
+      {item.duration !== undefined && item.duration > 0 && (
+        <div
+          className={`absolute bottom-0 left-0 h-1 transition-all duration-75 ${theme.progressBar}`}
+          style={{ width: `${progress}%` }}
+        />
+      )}
+    </div>
+  );
+};
+
 // --- Components ---
 const Navbar = () => {
   const { auth, logout } = useAuth();
@@ -47,7 +268,7 @@ const Navbar = () => {
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
               </div>
-              <span className="tracking-tighter">DRIVE<span className="text-blue-500">EASY</span></span>
+              <span className="tracking-tighter uppercase">Drive<span className="text-blue-500 font-bold ml-1">Easy</span></span>
             </Link>
           </div>
           <div className="hidden sm:flex sm:items-center sm:space-x-12">
@@ -82,7 +303,7 @@ const Navbar = () => {
 // --- Pages ---
 const Home = () => {
   const [cars, setCars] = useState<Car[]>([]);
-  const [filter, setFilter] = useState({ brand: '', fuel: '' });
+  const [filter, setFilter] = useState({ seats: '', fuel: '' });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -91,11 +312,11 @@ const Home = () => {
 
   const filteredCars = cars.filter(c =>
     c.availability &&
-    (filter.brand === '' || c.brand.toLowerCase() === filter.brand.toLowerCase()) &&
+    (filter.seats === '' || String(c.seats) === String(filter.seats)) &&
     (filter.fuel === '' || c.fuel_type.toLowerCase() === filter.fuel.toLowerCase())
   );
 
-  const brands = Array.from(new Set(cars.map(c => c.brand)));
+  const seatsOptions = Array.from(new Set(cars.map(c => String(c.seats))));
   const fuels = Array.from(new Set(cars.map(c => c.fuel_type)));
 
   return (
@@ -120,11 +341,11 @@ const Home = () => {
             <div className="relative">
               <select
                 className="appearance-none bg-white/5 border border-white/10 text-white pl-6 pr-12 py-3 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-bold text-sm cursor-pointer transition-all hover:bg-white/10"
-                value={filter.brand}
-                onChange={(e) => setFilter({ ...filter, brand: e.target.value })}
+                value={filter.seats}
+                onChange={(e) => setFilter({ ...filter, seats: e.target.value })}
               >
-                <option value="" className="bg-slate-900">All Brands</option>
-                {brands.map(b => <option key={b} value={b} className="bg-slate-900">{b}</option>)}
+                <option value="" className="bg-slate-900">All Seats</option>
+                {seatsOptions.map(b => <option key={b} value={b} className="bg-slate-900">{b} Seats</option>)}
               </select>
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -147,7 +368,7 @@ const Home = () => {
           </div>
 
           <button
-            onClick={() => setFilter({ brand: '', fuel: '' })}
+            onClick={() => setFilter({ seats: '', fuel: '' })}
             className="text-zinc-500 hover:text-white transition-colors text-sm font-bold ml-4"
           >
             Reset Filters
@@ -169,7 +390,7 @@ const Home = () => {
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-60"></div>
                 <div className="absolute top-6 left-6">
                   <span className="bg-white/10 backdrop-blur-xl border border-white/20 px-4 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest shadow-xl">
-                    {car.brand}
+                    {car.seats} Seats
                   </span>
                 </div>
               </div>
@@ -208,16 +429,55 @@ const CarDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { auth } = useAuth();
+  const { toast } = useToast();
   const [car, setCar] = useState<Car | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string>('');
+  const [showLightbox, setShowLightbox] = useState(false);
   const [dates, setDates] = useState({ pickup: '', return: '' });
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [purpose, setPurpose] = useState('Tour');
   const [includeDriver, setIncludeDriver] = useState(false);
-  const [driverIdProof, setDriverIdProof] = useState<string | null>(null);
   const [totalPrice, setTotalPrice] = useState(0);
+
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+  const [isSearchingMap, setIsSearchingMap] = useState(false);
+
+  const handleSearchLocation = async () => {
+    if (!pickupLocation.trim()) return;
+    setIsSearchingMap(true);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pickupLocation)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        setMapCenter([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+      } else {
+        toast("Not Found", "Could not find that location on the map.", "warning");
+      }
+    } catch (err) {
+      toast("Error", "Failed to search location.", "error");
+    } finally {
+      setIsSearchingMap(false);
+    }
+  };
+
+  // Customer Documents
+  const [customerPhoto, setCustomerPhoto] = useState<string | null>(null);
+  const [customerIdProof, setCustomerIdProof] = useState<string | null>(null);
+  const [drivingLicense, setDrivingLicense] = useState<string | null>(null);
+
+  // Payment State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Card'>('UPI');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentDetails, setPaymentDetails] = useState({ upiId: '', cardNumber: '', expiry: '', cvv: '', name: '' });
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+
 
   useEffect(() => {
     apiService.getCars().then(cars => {
       const found = cars.find(c => c.id.toString() === id);
       setCar(found || null);
+      if (found) setSelectedImage(found.images?.[0] || found.image);
     });
   }, [id]);
 
@@ -238,12 +498,15 @@ const CarDetails = () => {
 
   if (!car) return <div className="p-20 text-center font-black text-2xl text-zinc-500">Retrieving vehicle specifications...</div>;
 
-  const handleDriverIdUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const b64 = await fileToBase64(file);
-      setDriverIdProof(b64);
-    }
+  const processPaymentAndBook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsProcessing(true);
+    // Simulate payment validation / processing wait
+    setTimeout(() => {
+      setIsProcessing(false);
+      setShowPaymentModal(false);
+      handleBooking();
+    }, 1000);
   };
 
   const handleBooking = async () => {
@@ -251,21 +514,38 @@ const CarDetails = () => {
       navigate('/login');
       return;
     }
-    if (totalPrice <= 0) {
-      alert("Please select valid dates");
+    if (!acceptedTerms) {
+      toast("Agreement Required", "Please accept the Terms and Conditions to proceed.", "warning");
       return;
     }
+    if (totalPrice <= 0) {
+      toast("Invalid Dates", "Please select valid dates.", "error");
+      return;
+    }
+    if (!pickupLocation.trim()) {
+      toast("Location Missing", "Please enter a pickup location.", "error");
+      return;
+    }
+    if (!customerPhoto || !customerIdProof || !drivingLicense) {
+      toast("Documents Missing", "Customer Photo, ID Proof, and Driving License are required for verification.", "error");
+      return;
+    }
+
     await apiService.createBooking({
       user_id: auth.user!.id,
       car_id: car!.id,
       pickup_date: dates.pickup,
       return_date: dates.return,
+      pickup_location: pickupLocation,
       total_price: totalPrice,
       status: BookingStatus.PENDING,
       has_driver: includeDriver,
-      driver_id_proof: driverIdProof || undefined
+      customer_photo: customerPhoto,
+      customer_id_proof: customerIdProof,
+      driving_license: drivingLicense,
+      purpose: purpose,
     });
-    alert("Booking requested successfully!");
+    toast("Success", "Booking requested successfully!", "success");
     navigate('/my-bookings');
   };
 
@@ -274,10 +554,25 @@ const CarDetails = () => {
       <div className="bg-mesh"></div>
       <div className="grid lg:grid-cols-2 gap-16 items-start">
         <div className="sticky top-32">
-          <div className="rounded-[3rem] overflow-hidden shadow-2xl shadow-blue-500/10 border border-white/5 h-[600px] group">
-            <img src={car.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
+          <div className="rounded-[3rem] overflow-hidden shadow-2xl shadow-blue-500/10 border border-white/5 h-[600px] group cursor-pointer" onClick={() => setShowLightbox(true)}>
+            <img src={selectedImage || car.image} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+              <span className="bg-black/60 text-white font-black px-6 py-3 rounded-full text-sm uppercase tracking-widest backdrop-blur-md">Click to view</span>
+            </div>
           </div>
+          {(car.images && car.images.length > 1) && (
+            <div className="flex gap-4 mt-6 overflow-x-auto pb-4 custom-scrollbar">
+              {car.images.map((img, idx) => (
+                <button 
+                  key={idx} 
+                  onClick={() => setSelectedImage(img)}
+                  className={`w-24 h-24 rounded-2xl overflow-hidden shrink-0 border-2 transition-all ${selectedImage === img ? 'border-blue-500 scale-105 shadow-lg shadow-blue-500/20' : 'border-white/10 opacity-50 hover:opacity-100 hover:border-white/30'}`}
+                >
+                  <img src={img} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="space-y-12">
@@ -286,16 +581,47 @@ const CarDetails = () => {
             <h1 className="text-6xl font-black text-white mt-2 tracking-tighter">{car.name}</h1>
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="glass-morphism p-6 rounded-3xl border border-white/5">
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Base Rental Rate</p>
-              <p className="text-3xl font-black text-white">₹{car.price_per_day}<span className="text-sm text-zinc-500 font-medium">/day</span></p>
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Base Rental</p>
+              <p className="text-3xl font-black text-white">₹{car.price_per_day}<span className="text-sm text-zinc-500 font-medium">/d</span></p>
             </div>
             <div className="glass-morphism p-6 rounded-3xl border border-white/5">
               <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Engine Type</p>
               <p className="text-3xl font-black text-white uppercase">{car.fuel_type}</p>
             </div>
+            <div className="glass-morphism p-6 rounded-3xl border border-white/5">
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Seating</p>
+              <p className="text-3xl font-black text-white uppercase">{car.seats || 'N/A'}</p>
+            </div>
           </div>
+
+          {/* Car Documents Section */}
+          {((car.rc_doc || car.insurance_doc) && auth.isAuthenticated && auth.user?.role === UserRole.USER) && (
+            <div className="glass-morphism p-6 rounded-3xl border border-white/5 space-y-4">
+              <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Verify Documents</h4>
+              <div className="flex flex-wrap gap-4">
+                {car.rc_doc && (
+                  <button 
+                    onClick={() => openInNewTab(car.rc_doc!)} 
+                    className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-3 rounded-xl transition-all"
+                  >
+                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span className="text-xs font-black text-white uppercase tracking-widest">RC Document</span>
+                  </button>
+                )}
+                {car.insurance_doc && (
+                  <button 
+                    onClick={() => openInNewTab(car.insurance_doc!)} 
+                    className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-3 rounded-xl transition-all"
+                  >
+                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span className="text-xs font-black text-white uppercase tracking-widest">Insurance</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="glass-morphism p-10 rounded-[2.5rem] border border-white/10 shadow-2xl space-y-8 backdrop-blur-3xl">
             <h3 className="text-2xl font-black text-white tracking-tight">Reservation Details</h3>
@@ -318,6 +644,46 @@ const CarDetails = () => {
                   onChange={(e) => setDates({ ...dates, return: e.target.value })}
                 />
               </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Pickup Location</label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="Enter pickup address or select on map below"
+                    className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold"
+                    value={pickupLocation}
+                    onChange={(e) => setPickupLocation(e.target.value)}
+                    onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleSearchLocation(); } }}
+                    required
+                  />
+                  <button type="button" onClick={handleSearchLocation} disabled={isSearchingMap} className="bg-blue-600 text-white px-6 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95 disabled:opacity-50 flex items-center justify-center min-w-[80px]">
+                    {isSearchingMap ? (
+                      <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : 'Find'}
+                  </button>
+                </div>
+                <MapPicker onLocationSelect={setPickupLocation} mapCenter={mapCenter} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Purpose of Rent</label>
+                <div className="relative">
+                  <select
+                    className="w-full appearance-none bg-white/5 border border-white/10 text-white p-4 pr-12 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold cursor-pointer"
+                    value={purpose}
+                    onChange={(e) => setPurpose(e.target.value)}
+                  >
+                    <option value="Tour" className="bg-slate-900">Tour</option>
+                    <option value="Wedding" className="bg-slate-900">Wedding</option>
+                    <option value="Other Functions" className="bg-slate-900">Other Functions</option>
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <label className="flex items-center gap-4 p-5 bg-white/5 rounded-2xl border border-white/10 cursor-pointer hover:bg-white/10 transition-all group">
@@ -336,34 +702,58 @@ const CarDetails = () => {
               </div>
             </label>
 
-            {includeDriver && (
-              <div className="space-y-4 p-6 bg-blue-600/5 rounded-[2rem] border border-blue-500/20 animate-fade-in">
-                <label className="block text-[10px] font-black text-blue-500 uppercase tracking-widest">ID Proof (Required)</label>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleDriverIdUpload}
-                    className="flex-1 text-xs text-zinc-500 file:mr-4 file:py-2.5 file:px-6 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer transition-all"
-                  />
-                  {driverIdProof && (
-                    <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
-                      <span className="text-[10px] font-black text-emerald-500 uppercase">Attached</span>
-                    </div>
-                  )}
+
+            <div className="space-y-4 p-6 bg-white/5 rounded-[2rem] border border-white/10">
+              <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Customer Verification</h4>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-4 bg-white/5 p-3 rounded-xl">
+                  <span className="text-xs font-bold text-white min-w-[120px]">Profile Photo</span>
+                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if(f) setCustomerPhoto(await fileToBase64(f)) }} className="text-[10px] text-zinc-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white/10 file:text-white hover:file:bg-white/20 cursor-pointer w-full" />
+                  {customerPhoto && <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] shrink-0"></div>}
+                </div>
+                
+                <div className="flex items-center justify-between gap-4 bg-white/5 p-3 rounded-xl">
+                  <span className="text-xs font-bold text-white min-w-[120px]">ID Proof</span>
+                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if(f) setCustomerIdProof(await fileToBase64(f)) }} className="text-[10px] text-zinc-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white/10 file:text-white hover:file:bg-white/20 cursor-pointer w-full" />
+                  {customerIdProof && <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] shrink-0"></div>}
+                </div>
+
+                <div className="flex items-center justify-between gap-4 bg-white/5 p-3 rounded-xl">
+                  <span className="text-xs font-bold text-white min-w-[120px]">Driving License</span>
+                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if(f) setDrivingLicense(await fileToBase64(f)) }} className="text-[10px] text-zinc-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white/10 file:text-white hover:file:bg-white/20 cursor-pointer w-full" />
+                  {drivingLicense && <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] shrink-0"></div>}
                 </div>
               </div>
-            )}
+            </div>
 
             <div className="pt-4 border-t border-white/5">
               <div className="flex justify-between items-center mb-6">
                 <span className="text-zinc-400 font-bold">Total Price</span>
                 <span className="text-4xl font-black text-white">₹{totalPrice}</span>
               </div>
-              <button
+              
+              <label className="flex items-center gap-4 mb-6 p-4 bg-white/5 rounded-2xl border border-white/10 cursor-pointer hover:bg-white/10 transition-all group">
+                <div className="relative flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    className="peer appearance-none w-5 h-5 rounded-lg border-2 border-white/20 checked:bg-blue-600 checked:border-blue-600 transition-all cursor-pointer"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  />
+                  <svg className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-white text-sm tracking-tight">
+                    I accept the <a href="#" className="text-blue-500 hover:text-blue-400 underline" onClick={(e) => { e.preventDefault(); toast("Terms and Conditions", "1. The renter must hold a valid driving license.\n2. The vehicle must be returned in the same condition.\n3. Late returns will incur additional charges.\n4. Smoking and pets are not allowed in the vehicle.\n5. Customers must provide a 2-wheeler or equivalent security deposit equal to the car's rental value.", "info", 20000); }}>Terms and Conditions</a>
+                  </p>
+                </div>
+              </label>
+
+               <button
                 onClick={handleBooking}
-                className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-lg hover:bg-blue-700 shadow-2xl shadow-blue-500/20 transition-all active:scale-[0.98]"
+                disabled={!acceptedTerms}
+                className={`w-full py-5 text-white rounded-[1.5rem] font-black text-lg shadow-2xl transition-all active:scale-[0.98] ${acceptedTerms ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed shadow-none'}`}
               >
                 Book Now
               </button>
@@ -371,6 +761,78 @@ const CarDetails = () => {
           </div>
         </div>
       </div>
+
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="glass-morphism rounded-[3rem] p-12 max-w-md w-full border border-white/10 shadow-[0_0_100px_rgba(59,130,246,0.1)] relative">
+            <button className="absolute top-8 right-8 text-white/50 hover:text-white" onClick={() => !isProcessing && setShowPaymentModal(false)}>✕</button>
+            <h3 className="text-3xl font-black text-white tracking-tight mb-2 italic">Secure Payment</h3>
+            <p className="text-zinc-500 mb-8 text-xs font-bold uppercase tracking-widest leading-relaxed">Amount to Pay: <span className="text-white">₹{totalPrice}</span></p>
+            
+            <div className="flex bg-white/5 rounded-2xl p-1.5 border border-white/10 mb-8">
+              <button disabled={isProcessing} type="button" onClick={() => setPaymentMethod('UPI')} className={`flex-1 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all ${paymentMethod === 'UPI' ? 'bg-white text-slate-950 shadow-2xl shadow-white/10' : 'text-zinc-500 hover:text-white'}`}>UPI</button>
+              <button disabled={isProcessing} type="button" onClick={() => setPaymentMethod('Card')} className={`flex-1 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all ${paymentMethod === 'Card' ? 'bg-white text-slate-950 shadow-2xl shadow-white/10' : 'text-zinc-500 hover:text-white'}`}>Debit/Credit</button>
+            </div>
+
+            <form onSubmit={processPaymentAndBook} className="space-y-6">
+              {paymentMethod === 'UPI' ? (
+                <input type="text" placeholder="Enter UPI ID (e.g. name@upi)" required disabled={isProcessing} className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.upiId} onChange={e => setPaymentDetails({ ...paymentDetails, upiId: e.target.value })} />
+              ) : (
+                <div className="space-y-4">
+                  <input type="text" placeholder="Card Number" required maxLength={16} disabled={isProcessing} className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.cardNumber} onChange={e => setPaymentDetails({ ...paymentDetails, cardNumber: e.target.value })} />
+                  <div className="flex gap-4">
+                    <input type="text" placeholder="MM/YY" required maxLength={5} disabled={isProcessing} className="flex-1 bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.expiry} onChange={e => setPaymentDetails({ ...paymentDetails, expiry: e.target.value })} />
+                    <input type="password" placeholder="CVV" required maxLength={3} disabled={isProcessing} className="flex-1 bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.cvv} onChange={e => setPaymentDetails({ ...paymentDetails, cvv: e.target.value })} />
+                  </div>
+                  <input type="text" placeholder="Name on Card" required disabled={isProcessing} className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.name} onChange={e => setPaymentDetails({ ...paymentDetails, name: e.target.value })} />
+                </div>
+              )}
+              
+              <button type="submit" disabled={isProcessing} className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95 uppercase text-[10px] tracking-widest mt-4">
+                {isProcessing ? 'Processing Payment...' : 'Verify & Pay'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showLightbox && (
+        <div className="fixed inset-0 bg-black/95 z-[999] p-4 sm:p-10 flex items-center justify-center animate-fade-in" onClick={() => setShowLightbox(false)}>
+          <button className="absolute top-6 right-6 text-white hover:text-blue-500 transition-colors bg-white/10 p-4 rounded-full z-50" onClick={() => setShowLightbox(false)}>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+
+          {car?.images && car.images.length > 1 && (
+            <button 
+              className="absolute left-4 sm:left-10 top-1/2 -translate-y-1/2 text-white bg-white/10 hover:bg-white/20 p-4 rounded-full transition-colors z-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                const imgs = car.images!;
+                const idx = imgs.indexOf(selectedImage || car.image);
+                setSelectedImage(imgs[idx > 0 ? idx - 1 : imgs.length - 1]);
+              }}
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
+          )}
+
+          <img src={selectedImage || car.image} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl relative z-40" onClick={e => e.stopPropagation()} />
+
+          {car?.images && car.images.length > 1 && (
+            <button 
+              className="absolute right-4 sm:right-10 top-1/2 -translate-y-1/2 text-white bg-white/10 hover:bg-white/20 p-4 rounded-full transition-colors z-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                const imgs = car.images!;
+                const idx = imgs.indexOf(selectedImage || car.image);
+                setSelectedImage(imgs[idx < imgs.length - 1 ? idx + 1 : 0]);
+              }}
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -382,6 +844,7 @@ const Login = () => {
   const [step, setStep] = useState(1); // 1: Credentials, 2: OTP
   const [showPassword, setShowPassword] = useState(false);
   const { login, verifyLogin } = useAuth() as any;
+  const { toast } = useToast();
   const navigate = useNavigate();
   const [timer, setTimer] = useState(0);
 
@@ -400,9 +863,9 @@ const Login = () => {
     const result = await login(form.email, form.password);
     if (result.success) {
       setStep(2);
-      setTimer(120); // 2 minutes
+      setTimer(60); // 1 minute
     } else {
-      alert(result.error || 'Invalid credentials');
+      toast("Login Failed", result.error || 'Invalid credentials', "error");
     }
   };
 
@@ -412,7 +875,7 @@ const Login = () => {
     if (success) {
       navigate('/');
     } else {
-      alert('Invalid or expired OTP');
+      toast("Verification Failed", 'Invalid or expired OTP', "error");
     }
   };
 
@@ -520,6 +983,7 @@ const Register = () => {
   const [step, setStep] = useState(1); // 1: Info, 2: OTP
   const [showPassword, setShowPassword] = useState(false);
   const { register, verifyRegister } = useAuth() as any;
+  const { toast } = useToast();
   const navigate = useNavigate();
   const [timer, setTimer] = useState(0);
 
@@ -538,9 +1002,9 @@ const Register = () => {
     const result = await register(form.name, form.email, form.phone, form.password);
     if (result.success) {
       setStep(2);
-      setTimer(120); // 2 minutes
+      setTimer(60); // 1 minute
     } else {
-      alert(result.error || 'Failed to initiate registration');
+      toast("Registration Failed", result.error || 'Failed to initiate registration', "error");
     }
   };
 
@@ -550,7 +1014,7 @@ const Register = () => {
     if (success) {
       navigate('/');
     } else {
-      alert('Invalid or expired OTP');
+      toast("Verification Failed", 'Invalid or expired OTP', "error");
     }
   };
 
@@ -656,12 +1120,35 @@ const Register = () => {
 const MyBookings = () => {
   const { auth } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Card'>('UPI');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentDetails, setPaymentDetails] = useState({ upiId: '', cardNumber: '', expiry: '', cvv: '', name: '' });
+  const [activePaymentBooking, setActivePaymentBooking] = useState<Booking | null>(null);
 
-  useEffect(() => {
+  const fetchUserBookings = () => {
     apiService.getBookings().then(all => {
       setBookings(all.filter(b => b.user_id.toString() === auth.user?.id.toString()));
     });
+  };
+
+  useEffect(() => {
+    fetchUserBookings();
   }, [auth.user?.id]);
+
+  const processPaymentAndBook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activePaymentBooking) return;
+    setIsProcessing(true);
+    setTimeout(async () => {
+      await apiService.updateBookingStatus(activePaymentBooking.id, activePaymentBooking.status, {
+        payment_method: paymentMethod
+      });
+      setIsProcessing(false);
+      setShowPaymentModal(false);
+      fetchUserBookings();
+    }, 2000);
+  };
 
   const getStatusColor = (status: BookingStatus) => {
     switch (status) {
@@ -673,12 +1160,7 @@ const MyBookings = () => {
     }
   };
 
-  const openInNewTab = (base64: string) => {
-    const win = window.open();
-    if (win) {
-      win.document.write(`<iframe src="${base64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-    }
-  };
+  // Note: openInNewTab is now in the global scope
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-32 relative">
@@ -709,18 +1191,33 @@ const MyBookings = () => {
                   <span className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl ${getStatusColor(b.status)}`}>
                     {b.status}
                   </span>
+                  {b.status === BookingStatus.APPROVED && !b.payment_method && (
+                    <button onClick={() => { setActivePaymentBooking(b); setShowPaymentModal(true); }} className="px-5 py-2 rounded-xl text-[10px] bg-blue-600 text-white font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 ml-3 transition-all">Pay Now</button>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-8">
                   <div>
                     <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Duration</p>
                     <p className="font-bold text-zinc-300 text-sm">{b.pickup_date} <span className="text-blue-500 opacity-50 px-1">→</span> {b.return_date}</p>
                   </div>
                   <div>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Pickup Location</p>
+                    <p className="font-bold text-zinc-300 text-sm">{b.pickup_location || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Purpose</p>
+                    <p className="font-bold text-zinc-300 text-sm">{b.purpose || 'N/A'}</p>
+                  </div>
+                  <div>
                     <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Total Price</p>
                     <p className="font-black text-white text-lg">₹{b.total_price}</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Payment</p>
+                    <p className="font-bold text-[10px] tracking-widest uppercase bg-white/5 px-2 py-1 inline-block rounded-md text-zinc-300 whitespace-nowrap">{b.payment_method || 'PENDING'}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 col-span-2 md:col-span-5">
                     {b.car?.rc_doc && (
                       <button onClick={() => openInNewTab(b.car!.rc_doc!)} className="text-[9px] bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg font-black uppercase text-zinc-400 transition-colors">RC Doc</button>
                     )}
@@ -746,6 +1243,40 @@ const MyBookings = () => {
           ))
         )}
       </div>
+
+      {showPaymentModal && activePaymentBooking && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="glass-morphism rounded-[3rem] p-12 max-w-md w-full border border-white/10 shadow-[0_0_100px_rgba(59,130,246,0.1)] relative">
+            <button className="absolute top-8 right-8 text-white/50 hover:text-white" onClick={() => !isProcessing && setShowPaymentModal(false)}>✕</button>
+            <h3 className="text-3xl font-black text-white tracking-tight mb-2 italic">Secure Payment</h3>
+            <p className="text-zinc-500 mb-8 text-xs font-bold uppercase tracking-widest leading-relaxed">Amount to Pay: <span className="text-white">₹{activePaymentBooking.total_price}</span></p>
+            
+            <div className="flex bg-white/5 rounded-2xl p-1.5 border border-white/10 mb-8">
+              <button disabled={isProcessing} type="button" onClick={() => setPaymentMethod('UPI')} className={`flex-1 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all ${paymentMethod === 'UPI' ? 'bg-white text-slate-950 shadow-2xl shadow-white/10' : 'text-zinc-500 hover:text-white'}`}>UPI</button>
+              <button disabled={isProcessing} type="button" onClick={() => setPaymentMethod('Card')} className={`flex-1 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all ${paymentMethod === 'Card' ? 'bg-white text-slate-950 shadow-2xl shadow-white/10' : 'text-zinc-500 hover:text-white'}`}>Debit/Credit</button>
+            </div>
+
+            <form onSubmit={processPaymentAndBook} className="space-y-6">
+              {paymentMethod === 'UPI' ? (
+                <input type="text" placeholder="Enter UPI ID (e.g. name@upi)" required disabled={isProcessing} className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.upiId} onChange={e => setPaymentDetails({ ...paymentDetails, upiId: e.target.value })} />
+              ) : (
+                <div className="space-y-4">
+                  <input type="text" placeholder="Card Number" required maxLength={16} disabled={isProcessing} className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.cardNumber} onChange={e => setPaymentDetails({ ...paymentDetails, cardNumber: e.target.value })} />
+                  <div className="flex gap-4">
+                    <input type="text" placeholder="MM/YY" required maxLength={5} disabled={isProcessing} className="flex-1 bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.expiry} onChange={e => setPaymentDetails({ ...paymentDetails, expiry: e.target.value })} />
+                    <input type="password" placeholder="CVV" required maxLength={3} disabled={isProcessing} className="flex-1 bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.cvv} onChange={e => setPaymentDetails({ ...paymentDetails, cvv: e.target.value })} />
+                  </div>
+                  <input type="text" placeholder="Name on Card" required disabled={isProcessing} className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={paymentDetails.name} onChange={e => setPaymentDetails({ ...paymentDetails, name: e.target.value })} />
+                </div>
+              )}
+              
+              <button type="submit" disabled={isProcessing} className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95 uppercase text-[10px] tracking-widest mt-4">
+                {isProcessing ? 'Processing Payment...' : 'Verify & Pay'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -754,6 +1285,7 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<'bookings' | 'cars'>('bookings');
   const [editingCarId, setEditingCarId] = useState<any>(null);
   const [driverEntry, setDriverEntry] = useState<{ id: any, name: string, phone: string, id_proof?: string } | null>(null);
+  const { toast } = useToast();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rcInputRef = useRef<HTMLInputElement>(null);
@@ -774,7 +1306,7 @@ const AdminDashboard = () => {
   }, []);
 
   const [newCar, setNewCar] = useState<Partial<Car>>({
-    name: '', brand: '', price_per_day: 0, fuel_type: '', image: '', availability: true, rc_doc: '', insurance_doc: ''
+    name: '', brand: '', seats: '', price_per_day: 0, fuel_type: '', image: '', images: [], availability: true, rc_doc: '', insurance_doc: ''
   });
 
   const handleStatus = async (id: any, status: BookingStatus) => {
@@ -801,9 +1333,21 @@ const AdminDashboard = () => {
   };
 
   const handleCarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'image' | 'rc_doc' | 'insurance_doc') => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const b64 = await fileToBase64(file);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (field === 'image') {
+      const remainingSlots = 10 - (newCar.images?.length || 0);
+      const fileArray = Array.from(files).slice(0, remainingSlots);
+      if (fileArray.length === 0) return;
+      
+      const base64Images = await Promise.all(fileArray.map(f => fileToBase64(f)));
+      setNewCar(prev => {
+        const updatedImages = [...(prev.images || []), ...base64Images];
+        return { ...prev, images: updatedImages, image: updatedImages[0] };
+      });
+    } else {
+      const b64 = await fileToBase64(files[0]);
       setNewCar(prev => ({ ...prev, [field]: b64 }));
     }
   };
@@ -816,7 +1360,7 @@ const AdminDashboard = () => {
 
   const handleSaveCar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCar.image) return alert("Upload car image.");
+    if (!newCar.image) return toast("Image Required", "Upload car image.", "error");
     await apiService.saveCar(newCar as Car);
     resetForm();
     fetchAll();
@@ -824,7 +1368,7 @@ const AdminDashboard = () => {
 
   const resetForm = () => {
     setEditingCarId(null);
-    setNewCar({ name: '', brand: '', price_per_day: 0, fuel_type: '', image: '', availability: true, rc_doc: '', insurance_doc: '' });
+    setNewCar({ name: '', brand: '', seats: '', price_per_day: 0, fuel_type: '', image: '', images: [], availability: true, rc_doc: '', insurance_doc: '' });
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (rcInputRef.current) rcInputRef.current.value = '';
     if (insuranceInputRef.current) insuranceInputRef.current.value = '';
@@ -884,7 +1428,9 @@ const AdminDashboard = () => {
                 <tr>
                   <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Customer</th>
                   <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Car / Date</th>
+                  <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-center">Purpose</th>
                   <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-center">Driver</th>
+                  <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-center">Payment</th>
                   <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Price</th>
                   <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-right">Action</th>
                 </tr>
@@ -899,12 +1445,19 @@ const AdminDashboard = () => {
                     <td className="px-8 py-6">
                       <p className="font-black text-zinc-200 text-sm">{b.car?.name}</p>
                       <p className="text-[10px] font-black text-blue-500 uppercase tracking-tighter">{b.pickup_date} <span className="opacity-30">/</span> {b.return_date}</p>
+                      <p className="text-[10px] font-bold text-zinc-400 mt-1">Loc: {b.pickup_location || 'N/A'}</p>
+                    </td>
+                    <td className="px-8 py-6 text-center">
+                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest bg-white/5 border border-white/10 px-2 py-1 rounded-lg">{b.purpose || 'N/A'}</span>
                     </td>
                     <td className="px-8 py-6 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${b.has_driver ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>{b.has_driver ? 'Driver' : 'Self'}</span>
                         {b.driver_id_proof && <button onClick={() => openInNewTab(b.driver_id_proof!)} className="text-[8px] bg-white text-slate-950 px-2 py-0.5 rounded-md font-black hover:scale-105 transition-transform">VERIFY ID</button>}
                       </div>
+                    </td>
+                    <td className="px-8 py-6 text-center">
+                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest bg-white/5 border border-white/10 px-2 py-1 rounded-lg">{b.payment_method || 'N/A'}</span>
                     </td>
                     <td className="px-8 py-6 font-black text-white">₹{b.total_price}</td>
                     <td className="px-8 py-6 text-right space-x-3">
@@ -940,6 +1493,10 @@ const AdminDashboard = () => {
                 <input type="text" placeholder="e.g. Mahindra" required className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={newCar.brand} onChange={e => setNewCar({ ...newCar, brand: e.target.value })} />
               </div>
               <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Seats</label>
+                <input type="text" placeholder="e.g. 5" required className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={newCar.seats || ''} onChange={e => setNewCar({ ...newCar, seats: e.target.value })} />
+              </div>
+              <div className="space-y-2">
                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Price per Day</label>
                 <input type="number" placeholder="Price per day" required className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" value={newCar.price_per_day} onChange={e => setNewCar({ ...newCar, price_per_day: parseInt(e.target.value) })} />
               </div>
@@ -949,8 +1506,25 @@ const AdminDashboard = () => {
               </div>
 
               <div className="lg:col-span-2 space-y-2">
-                <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Car Image</label>
-                <input type="file" ref={fileInputRef} accept="image/*" className="w-full text-[10px] text-zinc-500 file:mr-4 file:py-3 file:px-10 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-blue-600 file:text-white cursor-pointer hover:file:bg-blue-700 transition-all border border-white/5 p-2 rounded-2xl" onChange={(e) => handleCarFileUpload(e, 'image')} />
+                <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Car Images (Up to 10)</label>
+                <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-2">
+                  {newCar.images?.map((img, idx) => (
+                    <div key={idx} className="relative w-24 h-24 shrink-0 rounded-xl overflow-hidden border border-white/10 group/img">
+                      <img src={img} className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => {
+                        const updated = newCar.images!.filter((_, i) => i !== idx);
+                        setNewCar({ ...newCar, images: updated, image: updated[0] || '' });
+                      }} className="absolute top-1 right-1 bg-red-500/90 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs font-bold hover:scale-110">✕</button>
+                    </div>
+                  ))}
+                  {(!newCar.images || newCar.images.length < 10) && (
+                    <label className="w-24 h-24 shrink-0 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-500/5 transition-all text-white/40 hover:text-blue-500 group">
+                      <span className="text-2xl group-hover:scale-125 transition-transform">+</span>
+                      <span className="text-[8px] font-black uppercase mt-1">Add Image</span>
+                      <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleCarFileUpload(e, 'image')} />
+                    </label>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest ml-1">RC Document</label>
@@ -1087,8 +1661,9 @@ const AuthProvider = ({ children }: { children?: React.ReactNode }) => {
 export default function App() {
   return (
     <HashRouter>
-      <AuthProvider>
-        <div className="min-h-screen bg-dark flex flex-col selection:bg-blue-500/30">
+      <ToastProvider>
+        <AuthProvider>
+          <div className="min-h-screen flex flex-col selection:bg-blue-500/30">
           <Navbar />
           <main className="flex-grow">
             <Routes>
@@ -1107,7 +1682,8 @@ export default function App() {
             </div>
           </footer>
         </div>
-      </AuthProvider>
+        </AuthProvider>
+      </ToastProvider>
     </HashRouter>
   );
 }
