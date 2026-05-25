@@ -51,6 +51,7 @@ export interface Booking {
   customer_id_proof?: string;
   driving_license?: string;
   purpose?: string; // Added field for purpose of rent
+  customer_number?: string; // Added field for customer contact number
   // Joins
   car?: Car;
   user?: User;

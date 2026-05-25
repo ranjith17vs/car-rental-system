@@ -436,6 +436,7 @@ const CarDetails = () => {
   const [dates, setDates] = useState({ pickup: '', return: '' });
   const [pickupLocation, setPickupLocation] = useState('');
   const [purpose, setPurpose] = useState('Tour');
+  const [customerNumber, setCustomerNumber] = useState('');
   const [includeDriver, setIncludeDriver] = useState(false);
   const [totalPrice, setTotalPrice] = useState(0);
 
@@ -544,6 +545,7 @@ const CarDetails = () => {
       customer_id_proof: customerIdProof,
       driving_license: drivingLicense,
       purpose: purpose,
+      customer_number: customerNumber,
     });
     toast("Success", "Booking requested successfully!", "success");
     navigate('/my-bookings');
@@ -683,6 +685,17 @@ const CarDetails = () => {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                   </div>
                 </div>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Customer Number</label>
+                <input
+                  type="text"
+                  placeholder="Enter contact number"
+                  className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold"
+                  value={customerNumber}
+                  onChange={(e) => setCustomerNumber(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
@@ -1210,6 +1223,10 @@ const MyBookings = () => {
                     <p className="font-bold text-zinc-300 text-sm">{b.purpose || 'N/A'}</p>
                   </div>
                   <div>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Contact No.</p>
+                    <p className="font-bold text-zinc-300 text-sm">{b.customer_number || b.user?.phone || 'N/A'}</p>
+                  </div>
+                  <div>
                     <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Total Price</p>
                     <p className="font-black text-white text-lg">₹{b.total_price}</p>
                   </div>
@@ -1441,6 +1458,7 @@ const AdminDashboard = () => {
                     <td className="px-8 py-6">
                       <p className="font-black text-white text-sm">{b.user?.name}</p>
                       <p className="text-[10px] font-bold text-zinc-500 uppercase opacity-50">{b.user?.email}</p>
+                      {b.customer_number && <p className="text-[10px] font-bold text-blue-400 mt-1">Contact: {b.customer_number}</p>}
                     </td>
                     <td className="px-8 py-6">
                       <p className="font-black text-zinc-200 text-sm">{b.car?.name}</p>

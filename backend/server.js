@@ -321,6 +321,7 @@ async function sendAdminBookingNotification(bookingData) {
                     <ul style="list-style: none; padding: 0;">
                         <li><strong>Car ID:</strong> ${bookingData.car_id}</li>
                         <li><strong>User ID:</strong> ${bookingData.user_id}</li>
+                        ${bookingData.customer_number ? `<li><strong>Customer Number:</strong> ${bookingData.customer_number}</li>` : ''}
                         <li><strong>Pickup Date:</strong> ${bookingData.pickup_date}</li>
                         <li><strong>Return Date:</strong> ${bookingData.return_date}</li>
                         <li><strong>Total Price:</strong> ₹${bookingData.total_price}</li>
