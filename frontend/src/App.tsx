@@ -6,6 +6,9 @@ import apiService from './services/apiService';
 
 const DRIVER_DAILY_FEE = 500;
 
+export const TN_DISTRICTS = [
+  "Ariyalur", "Chengalpattu", "Chennai", "Coimbatore", "Cuddalore", "Dharmapuri", "Dindigul", "Erode", "Kallakurichi", "Kanchipuram", "Kanyakumari", "Karur", "Krishnagiri", "Madurai", "Mayiladuthurai", "Nagapattinam", "Namakkal", "Nilgiris", "Perambalur", "Pudukkottai", "Ramanathapuram", "Ranipet", "Salem", "Sivaganga", "Tenkasi", "Thanjavur", "Theni", "Thoothukudi", "Tiruchirappalli", "Tirunelveli", "Tirupathur", "Tiruppur", "Tiruvallur", "Tiruvannamalai", "Tiruvarur", "Vellore", "Viluppuram", "Virudhunagar"
+];
 // --- Helper for Base64 Upload & Document Viewing ---
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -435,6 +438,7 @@ const CarDetails = () => {
   const [showLightbox, setShowLightbox] = useState(false);
   const [dates, setDates] = useState({ pickup: '', return: '' });
   const [pickupLocation, setPickupLocation] = useState('');
+  const [pickupDistrict, setPickupDistrict] = useState('');
   const [purpose, setPurpose] = useState('Tour');
   const [customerNumber, setCustomerNumber] = useState('');
   const [includeDriver, setIncludeDriver] = useState(false);
@@ -546,6 +550,7 @@ const CarDetails = () => {
       driving_license: drivingLicense,
       purpose: purpose,
       customer_number: customerNumber,
+      pickup_district: pickupDistrict,
     });
     toast("Success", "Booking requested successfully!", "success");
     navigate('/my-bookings');
@@ -668,6 +673,25 @@ const CarDetails = () => {
                   </button>
                 </div>
                 <MapPicker onLocationSelect={setPickupLocation} mapCenter={mapCenter} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Pickup District (Tamil Nadu)</label>
+                <div className="relative">
+                  <select
+                    className="w-full appearance-none bg-white/5 border border-white/10 text-white p-4 pr-12 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold cursor-pointer"
+                    value={pickupDistrict}
+                    onChange={(e) => setPickupDistrict(e.target.value)}
+                    required
+                  >
+                    <option value="" disabled className="bg-slate-900">Select a district</option>
+                    {TN_DISTRICTS.map(d => (
+                      <option key={d} value={d} className="bg-slate-900">{d}</option>
+                    ))}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                  </div>
+                </div>
               </div>
               <div className="space-y-2 md:col-span-2">
                 <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Purpose of Rent</label>
@@ -1299,7 +1323,7 @@ const MyBookings = () => {
 };
 
 const AdminDashboard = () => {
-  const [activeTab, setActiveTab] = useState<'bookings' | 'cars'>('bookings');
+  const [activeTab, setActiveTab] = useState<'bookings' | 'cars' | 'analytics'>('bookings');
   const [editingCarId, setEditingCarId] = useState<any>(null);
   const [driverEntry, setDriverEntry] = useState<{ id: any, name: string, phone: string, id_proof?: string } | null>(null);
   const { toast } = useToast();
@@ -1325,6 +1349,26 @@ const AdminDashboard = () => {
   const [newCar, setNewCar] = useState<Partial<Car>>({
     name: '', brand: '', seats: '', price_per_day: 0, fuel_type: '', image: '', images: [], availability: true, rc_doc: '', insurance_doc: ''
   });
+
+  const getDistrictStats = () => {
+    const stats: Record<string, number> = {};
+    TN_DISTRICTS.forEach(d => stats[d] = 0);
+    stats['Unknown'] = 0;
+    
+    bookings.forEach(b => {
+      const d = b.pickup_district || 'Unknown';
+      if (stats[d] !== undefined) {
+        stats[d]++;
+      } else {
+        stats['Unknown']++;
+      }
+    });
+
+    return Object.entries(stats).sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0]);
+    });
+  };
 
   const handleStatus = async (id: any, status: BookingStatus) => {
     if (status === BookingStatus.APPROVED) {
@@ -1434,10 +1478,11 @@ const AdminDashboard = () => {
         <div className="flex bg-white/5 rounded-2xl p-1.5 border border-white/10 backdrop-blur-3xl">
           <button onClick={() => setActiveTab('bookings')} className={`px-10 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'bookings' ? 'bg-white text-slate-950 shadow-2xl shadow-white/10' : 'text-zinc-500 hover:text-white'}`}>Bookings</button>
           <button onClick={() => setActiveTab('cars')} className={`px-10 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'cars' ? 'bg-white text-slate-950 shadow-2xl shadow-white/10' : 'text-zinc-500 hover:text-white'}`}>Cars</button>
+          <button onClick={() => setActiveTab('analytics')} className={`px-10 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'analytics' ? 'bg-white text-slate-950 shadow-2xl shadow-white/10' : 'text-zinc-500 hover:text-white'}`}>Analytics</button>
         </div>
       </div>
 
-      {activeTab === 'bookings' ? (
+      {activeTab === 'bookings' && (
         <div className="glass-morphism rounded-[3rem] border border-white/5 overflow-hidden shadow-2xl animate-fade-in">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -1495,7 +1540,8 @@ const AdminDashboard = () => {
             </table>
           </div>
         </div>
-      ) : (
+      )}
+      {activeTab === 'cars' && (
         <div className="space-y-16 animate-fade-in">
           {/* Manual Car Form */}
           <div className="glass-morphism p-12 rounded-[3.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
@@ -1585,6 +1631,27 @@ const AdminDashboard = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {activeTab === 'analytics' && (
+        <div className="space-y-16 animate-fade-in pb-32">
+          <div className="glass-morphism rounded-[3rem] border border-white/5 overflow-hidden shadow-2xl">
+            <div className="p-10 border-b border-white/5">
+              <h3 className="text-3xl font-black text-white italic tracking-tight">District Analytics</h3>
+              <p className="text-zinc-500 mt-2 font-bold uppercase text-[10px] tracking-widest">Number of cars booked per district</p>
+            </div>
+            <div className="p-10 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {getDistrictStats().map(([district, count]) => (
+                <div key={district} className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col justify-between hover:border-blue-500/30 hover:bg-blue-500/5 transition-all">
+                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{district}</span>
+                  <div className="mt-4 flex items-end justify-between">
+                    <span className="text-4xl font-black text-white tracking-tighter">{count}</span>
+                    <span className="text-blue-500 font-bold uppercase text-[8px] tracking-widest mb-2">Bookings</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

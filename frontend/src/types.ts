@@ -52,6 +52,7 @@ export interface Booking {
   driving_license?: string;
   purpose?: string; // Added field for purpose of rent
   customer_number?: string; // Added field for customer contact number
+  pickup_district?: string; // Added field for Tamil Nadu district analytics
   // Joins
   car?: Car;
   user?: User;
